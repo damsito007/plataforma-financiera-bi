@@ -11,6 +11,14 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("No se encontró la variable DATABASE_URL")
 
+# Usar psycopg 3
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql://",
+        "postgresql+psycopg://",
+        1
+    )
+
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True
@@ -25,7 +33,6 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-# Dependency para inyectar la sesión en las rutas de FastAPI
 def get_db():
     db = SessionLocal()
     try:
