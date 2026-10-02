@@ -1,0 +1,5 @@
+cd C:\Users\djbar\plataforma-financiera-bi\backend.\venv\Scripts\activate
+
+python init_db.py
+
+uvicorn main:app --port 8080 --reload
