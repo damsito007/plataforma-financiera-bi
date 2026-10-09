@@ -39,76 +39,67 @@ async def preview_columnas(file: UploadFile = File(...)):
         "columnas_detectadas": [str(c).strip() for c in df.columns]
     }
 
+# ============================================================
 # 4. Procesar e inyectar un archivo en una carpeta específica
+# ============================================================
+
 @router.post("/{carpeta_id}/upload")
 async def cargar_archivo_en_carpeta(
     carpeta_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    carpeta = db.query(CarpetaProyecto).filter(CarpetaProyecto.id == carpeta_id).first()
+    # Verificar que la carpeta exista
+    carpeta = (
+        db.query(CarpetaProyecto)
+        .filter(CarpetaProyecto.id == carpeta_id)
+        .first()
+    )
+
     if not carpeta:
-        raise HTTPException(status_code=404, detail="La carpeta especificada no existe.")
+        raise HTTPException(
+            status_code=404,
+            detail="La carpeta especificada no existe."
+        )
 
-    temp_folder = "temp_files"
-    os.makedirs(temp_folder, exist_ok=True)
-    temp_path = os.path.join(temp_folder, file.filename)
-
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Validar extensión
+    if not file.filename.lower().endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato no soportado. Formatos válidos: .xlsx, .xls, .csv"
+        )
 
     try:
-        # Ejecutar el servicio de ML con el sector de la carpeta
-        df, resumen = procesar_archivo_empresarial(temp_path, carpeta.sector)
+        # ========================================================
+        # Ejecutar TODO el pipeline
+        # El servicio se encarga de:
+        # - Leer Excel/CSV
+        # - Normalizar datos
+        # - Calcular Z-Score
+        # - Ejecutar Isolation Forest
+        # - Clasificar riesgo
+        # - Crear HistorialArchivo
+        # - Crear TransaccionProcesada
+        # - Guardar en PostgreSQL
+        # ========================================================
 
-        # Crear el registro del archivo
-        nuevo_historial = HistorialArchivo(
-            carpeta_id=carpeta.id,
-            nombre_archivo=file.filename,
-            total_registros=resumen["total_registros"],
-            total_anomalias=resumen["total_anomalias"],
-            total_debito=resumen["total_debito"],
-            total_credito=resumen["total_credito"]
+        resultado = procesar_archivo_empresarial(
+            file=file,
+            sector=carpeta.sector,
+            db=db,
+            carpeta_id=carpeta.id
         )
-        db.add(nuevo_historial)
-        db.commit()
-        db.refresh(nuevo_historial)
 
-        # Inyectar las transacciones procesadas
-        registros = [
-            TransaccionProcesada(
-                archivo_id=nuevo_historial.id,
-                carpeta_id=carpeta.id,
-                sector=carpeta.sector,
-                fecha=str(row.get('fecha', '')),
-                codigo_cuenta=str(row.get('cuenta', '')),
-                cuenta=str(row.get('cuenta', '')),
-                proveedor_o_cliente=str(row.get('proveedor_o_cliente', '')),
-                descripcion=str(row.get('descripcion', '')),
-                debito=float(row.get('debito', 0.0)),
-                credito=float(row.get('credito', 0.0)),
-                monto_abs=float(row.get('monto_abs', 0.0)),
-                es_anomalia=bool(row.get('es_anomalia', False)),
-                puntuacion_anomalia=float(row.get('puntuacion_anomalia', 0.0)),
-                nivel_riesgo=str(row.get('nivel_riesgo', 'Bajo')),
-                z_score_monto=float(row.get('z_score_monto', 0.0)),
-                tipo_movimiento=str(row.get('tipo_movimiento', 'Débito'))
-            )
-            for _, row in df.iterrows()
-        ]
+        return resultado
 
-        db.bulk_save_objects(registros)
-        db.commit()
-
-        return {
-            "mensaje": f"Archivo '{file.filename}' procesado e inyectado con éxito en la carpeta '{carpeta.nombre}'.",
-            "resumen": resumen,
-            "historial_id": nuevo_historial.id
-        }
+    except HTTPException:
+        raise
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error en la ingesta: {str(e)}")
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error en la ingesta: {str(e)}"
+        )
+
