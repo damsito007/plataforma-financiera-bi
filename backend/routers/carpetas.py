@@ -47,6 +47,7 @@ async def preview_columnas(file: UploadFile = File(...)):
 async def cargar_archivo_en_carpeta(
     carpeta_id: int,
     file: UploadFile = File(...),
+    usuario_id: int = Form(1),
     db: Session = Depends(get_db)
 ):
     # Verificar que la carpeta exista
@@ -87,7 +88,8 @@ async def cargar_archivo_en_carpeta(
             file=file,
             sector=carpeta.sector,
             db=db,
-            carpeta_id=carpeta.id
+            carpeta_id=carpeta.id,
+            usuario_id=usuario_id
         )
 
         return resultado
@@ -103,3 +105,17 @@ async def cargar_archivo_en_carpeta(
             detail=f"Error en la ingesta: {str(e)}"
         )
 
+
+@router.delete("/{carpeta_id}")
+def eliminar_carpeta(carpeta_id: int, db: Session = Depends(get_db)):
+    carpeta = db.query(CarpetaProyecto).filter(CarpetaProyecto.id == carpeta_id).first()
+    if not carpeta:
+        raise HTTPException(status_code=404, detail="La carpeta especificada no existe.")
+    
+    try:
+        db.delete(carpeta)
+        db.commit()
+        return {"mensaje": f"Carpeta '{carpeta.nombre}' eliminada con éxito."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar la carpeta: {str(e)}")

@@ -5,19 +5,39 @@ from database import get_db
 from models import HistorialArchivo, TransaccionProcesada
 from sqlalchemy import func
 from database import SessionLocal
+from sqlalchemy.orm import joinedload
 
 router = APIRouter(prefix="/api/historial", tags=["Historial y Gestión de Archivos"])
 
 # 1. Obtener la lista de archivos subidos (Filtrable opcionalmente por carpeta_id)
 @router.get("/")
 def listar_historial(carpeta_id: Optional[int] = None, db: Session = Depends(get_db)):
-    query = db.query(HistorialArchivo)
+    query = db.query(HistorialArchivo).options(joinedload(HistorialArchivo.usuario)) # <--- Cargar autor
     
     if carpeta_id is not None:
         query = query.filter(HistorialArchivo.carpeta_id == carpeta_id)
         
     archivos = query.order_by(HistorialArchivo.fecha_subida.desc()).all()
-    return archivos
+    
+    # Formatear la respuesta para incluir los datos del usuario persistente
+    return [
+        {
+            "id": a.id,
+            "carpeta_id": a.carpeta_id,
+            "usuario_id": a.usuario_id,
+            "nombre_archivo": a.nombre_archivo,
+            "fecha_subida": a.fecha_subida,
+            "total_registros": a.total_registros,
+            "total_anomalias": a.total_anomalias,
+            "total_debito": a.total_debito,
+            "total_credito": a.total_credito,
+            "usuario": {
+                "id": a.usuario.id,
+                "username": a.usuario.username
+            } if a.usuario else {"username": "Desconocido"}
+        }
+        for a in archivos
+    ]
 
 # 2. Obtener el resumen analítico de un archivo específico por su ID
 @router.get("/{archivo_id}")

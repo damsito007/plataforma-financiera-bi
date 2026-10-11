@@ -47,16 +47,17 @@ class HistorialArchivo(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     carpeta_id = Column(Integer, ForeignKey("carpetas_proyectos.id"), nullable=False)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True) # <--- Nuevo campo
     nombre_archivo = Column(String, nullable=False)
     fecha_subida = Column(DateTime, default=datetime.utcnow)
     
-    # Totales del archivo individual
     total_registros = Column(Integer, default=0)
     total_anomalias = Column(Integer, default=0)
     total_debito = Column(Float, default=0.0)
     total_credito = Column(Float, default=0.0)
 
     # Relaciones
+    usuario = relationship("Usuario") # <--- Relación opcional
     transacciones = relationship("TransaccionProcesada", backref="archivo", cascade="all, delete-orphan")
 
 

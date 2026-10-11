@@ -10,12 +10,13 @@ export default function App() {
   // Recupera la sesión guardada en localStorage si el usuario refresca la pantalla
   useEffect(() => {
     const token = localStorage.getItem('token');
+    const id = localStorage.getItem('id');
     const rol = localStorage.getItem('rol');
     const codigo_cliente = localStorage.getItem('codigo_cliente');
     const username = localStorage.getItem('username');
     
     if (token && rol) {
-      setSesion({ username, rol, codigo_cliente });
+      setSesion({ id: id ? parseInt(id, 10) : 1, username, rol, codigo_cliente });
     }
   }, []);
 

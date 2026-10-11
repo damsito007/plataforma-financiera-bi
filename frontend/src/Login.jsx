@@ -27,15 +27,29 @@ export default function Login({ onLoginSuccess }) {
 
       if (respuesta.data && respuesta.data.access_token) {
         const token = respuesta.data.access_token;
-        const rol = respuesta.data.rol || 'User';
-        const codigo_cliente = respuesta.data.codigo_cliente || '';
+        
+        // Extraemos los datos del objeto usuario retornado por la API
+        const datosUsuarioServer = respuesta.data.usuario || {};
+        
+        const id = datosUsuarioServer.id || 1;
+        const rol = datosUsuarioServer.rol || respuesta.data.rol || 'User';
+        const codigo_cliente = datosUsuarioServer.codigo_cliente || respuesta.data.codigo_cliente || '';
+        const userNombre = datosUsuarioServer.username || username;
 
+        // Guardamos todo en localStorage para persistir la sesión al recargar
         localStorage.setItem('token', token);
+        localStorage.setItem('id', id);
         localStorage.setItem('rol', rol);
         localStorage.setItem('codigo_cliente', codigo_cliente);
-        localStorage.setItem('username', username);
+        localStorage.setItem('username', userNombre);
 
-        onLoginSuccess({ username, rol, codigo_cliente });
+        // Pasamos el objeto completo a App.jsx
+        onLoginSuccess({
+          id,
+          username: userNombre,
+          rol,
+          codigo_cliente
+        });
       } else {
         setError('El servidor devolvió un formato de respuesta inválido.');
       }
@@ -102,7 +116,6 @@ export default function Login({ onLoginSuccess }) {
           }}
         >
           <div>
-            {/* Logo / Header */}
             <div className="flex items-center gap-2.5 mb-8">
               <div
                 className="p-2.5 rounded-2xl shadow-lg"
@@ -132,7 +145,6 @@ export default function Login({ onLoginSuccess }) {
             </p>
 
             <div className="space-y-3.5">
-
               <div className="flex items-center gap-3 text-xs text-white">
                 <div
                   className="p-1.5 rounded-lg shrink-0"
@@ -171,7 +183,6 @@ export default function Login({ onLoginSuccess }) {
                 </div>
                 <span>Consolidación automática de saldos</span>
               </div>
-
             </div>
           </div>
 
@@ -207,7 +218,6 @@ export default function Login({ onLoginSuccess }) {
             </p>
           </div>
 
-          {/* Mensaje de error */}
           {error && (
             <div
               className="mb-5 p-3.5 border text-xs rounded-2xl flex items-start gap-2.5 animate-shake"
@@ -227,8 +237,6 @@ export default function Login({ onLoginSuccess }) {
           )}
 
           <form onSubmit={ejecutarFormulario} className="space-y-4">
-
-            {/* Campo usuario */}
             <div>
               <label
                 className="block text-xs font-semibold mb-1.5"
@@ -254,23 +262,13 @@ export default function Login({ onLoginSuccess }) {
                   style={{
                     backgroundColor: '#1E293B',
                     border: '1px solid #475569',
-                    color: '#FDF2F5',
-                    '--tw-ring-color': '#8B0D37'
+                    color: '#FDF2F5'
                   }}
                   placeholder="ej. marjourie o admin"
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#8B0D37';
-                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(139, 13, 55, 0.22)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#475569';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
                 />
               </div>
             </div>
 
-            {/* Campo contraseña */}
             <div>
               <label
                 className="block text-xs font-semibold mb-1.5"
@@ -299,14 +297,6 @@ export default function Login({ onLoginSuccess }) {
                     color: '#FDF2F5'
                   }}
                   placeholder="••••••••"
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#8B0D37';
-                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(139, 13, 55, 0.22)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#475569';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
                 />
 
                 <button
@@ -314,20 +304,12 @@ export default function Login({ onLoginSuccess }) {
                   onClick={() => setMostrarPassword(!mostrarPassword)}
                   className="absolute inset-y-0 right-0 pr-3.5 flex items-center transition-colors"
                   style={{ color: '#94A3B8' }}
-                  aria-label={
-                    mostrarPassword
-                      ? 'Ocultar contraseña'
-                      : 'Mostrar contraseña'
-                  }
                 >
-                  {mostrarPassword
-                    ? <EyeOff size={16} />
-                    : <Eye size={16} />}
+                  {mostrarPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            {/* Botón ingresar */}
             <button
               type="submit"
               disabled={cargando}
@@ -335,14 +317,6 @@ export default function Login({ onLoginSuccess }) {
               style={{
                 backgroundColor: '#8B0D37',
                 boxShadow: '0 8px 20px rgba(139, 13, 55, 0.25)'
-              }}
-              onMouseEnter={(e) => {
-                if (!cargando) {
-                  e.currentTarget.style.backgroundColor = '#5C0924';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#8B0D37';
               }}
             >
               {cargando ? (
@@ -360,11 +334,9 @@ export default function Login({ onLoginSuccess }) {
                 </>
               )}
             </button>
-
           </form>
         </div>
       </div>
     </div>
   );
 }
-

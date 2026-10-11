@@ -70,7 +70,7 @@ def normalizar_y_cargar_dataframe(file: UploadFile):
     return df_normalizado
 
 
-def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, carpeta_id: int):
+def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, carpeta_id: int, usuario_id: int = 1):
     filename = file.filename
 
     try:
@@ -118,6 +118,7 @@ def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, car
         nuevo_archivo = HistorialArchivo(
             nombre_archivo=filename,
             carpeta_id=int(carpeta_id),
+            usuario_id=int(usuario_id),
             total_registros=total_registros,
             total_anomalias=total_anomalias,
             total_debito=total_debito,
