@@ -1,10 +1,12 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 import os, shutil
 import pandas as pd
 from database import get_db
 from models import CarpetaProyecto, HistorialArchivo, TransaccionProcesada
 from services import procesar_archivo_empresarial
+from typing import Optional
+from sqlalchemy import text
 
 router = APIRouter(prefix="/api/carpetas", tags=["Carpetas y Proyectos"])
 
@@ -119,3 +121,175 @@ def eliminar_carpeta(carpeta_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error al eliminar la carpeta: {str(e)}")
+
+
+# ============================================================
+# 5. ANALÍTICA DE REGISTROS CONTABLES
+# ============================================================
+
+@router.get("/{carpeta_id}/analitica-registros")
+def obtener_analitica_registros(
+    carpeta_id: int,
+    archivo_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene métricas contables de una carpeta o de un archivo específico:
+    - Evolución mensual.
+    - Top 10 de cuentas contables.
+    - Distribución por sector.
+    """
+
+    try:
+        filtro_archivo = (
+            "AND t.archivo_id = :archivo_id"
+            if archivo_id is not None
+            else ""
+        )
+
+        params = {"carpeta_id": carpeta_id}
+
+        if archivo_id is not None:
+            params["archivo_id"] = archivo_id
+
+        # 1. EVOLUCIÓN MENSUAL
+        query_evolucion = text(f"""
+            SELECT
+                TO_CHAR(
+                    TO_TIMESTAMP(
+                        TRIM(t.fecha),
+                        'YYYY-MM-DD HH24:MI:SS'
+                    ),
+                    'YYYY-MM'
+                ) AS mes,
+                COUNT(*) AS total_registros,
+                COUNT(
+                    CASE
+                        WHEN t.es_anomalia = TRUE THEN 1
+                    END
+                ) AS anomalias,
+                SUM(COALESCE(t.monto_abs, 0)) AS monto_total
+            FROM transacciones_procesadas t
+            JOIN historial_archivos h
+                ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id
+                {filtro_archivo}
+                AND TRIM(t.fecha) ~
+                    '^\\d{{4}}-\\d{{2}}-\\d{{2}} \\d{{2}}:\\d{{2}}:\\d{{2}}$'
+            GROUP BY mes
+            ORDER BY mes ASC
+        """)
+
+        evolucion_res = db.execute(
+            query_evolucion, params
+        ).fetchall()
+
+        evolucion_mensual = [
+            {
+                "mes": r.mes or "Sin Fecha",
+                "total_registros": int(r.total_registros or 0),
+                "anomalias": int(r.anomalias or 0),
+                "monto_total": float(r.monto_total or 0.0)
+            }
+            for r in evolucion_res
+        ]
+
+        # 2. TOP 10 CUENTAS CONTABLES
+        query_top_cuentas = text(f"""
+            SELECT
+                COALESCE(
+                    NULLIF(TRIM(t.cuenta), ''),
+                    NULLIF(TRIM(t.codigo_cuenta), ''),
+                    'Sin Cuenta'
+                ) AS cuenta,
+                COUNT(*) AS total_transacciones,
+                COUNT(
+                    CASE
+                        WHEN t.es_anomalia = TRUE THEN 1
+                    END
+                ) AS anomalias
+            FROM transacciones_procesadas t
+            JOIN historial_archivos h
+                ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id
+                {filtro_archivo}
+            GROUP BY
+                COALESCE(
+                    NULLIF(TRIM(t.cuenta), ''),
+                    NULLIF(TRIM(t.codigo_cuenta), ''),
+                    'Sin Cuenta'
+                )
+            ORDER BY
+                anomalias DESC,
+                total_transacciones DESC
+            LIMIT 10
+        """)
+
+        cuentas_res = db.execute(
+            query_top_cuentas, params
+        ).fetchall()
+
+        top_cuentas = [
+            {
+                "cuenta": r.cuenta,
+                "total_transacciones": int(r.total_transacciones or 0),
+                "anomalias": int(r.anomalias or 0)
+            }
+            for r in cuentas_res
+        ]
+
+        # 3. DISTRIBUCIÓN POR SECTOR
+        query_centros_costo = text(f"""
+            SELECT
+                COALESCE(
+                    NULLIF(TRIM(t.sector), ''),
+                    'Sin Sector'
+                ) AS centro,
+                COUNT(*) AS total_transacciones,
+                COUNT(
+                    CASE
+                        WHEN t.es_anomalia = TRUE THEN 1
+                    END
+                ) AS anomalias,
+                SUM(COALESCE(t.monto_abs, 0)) AS monto_total
+            FROM transacciones_procesadas t
+            JOIN historial_archivos h
+                ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id
+                {filtro_archivo}
+            GROUP BY
+                COALESCE(
+                    NULLIF(TRIM(t.sector), ''),
+                    'Sin Sector'
+                )
+            ORDER BY
+                anomalias DESC,
+                monto_total DESC
+            LIMIT 8
+        """)
+
+        centros_res = db.execute(
+            query_centros_costo, params
+        ).fetchall()
+
+        centros_costo = [
+            {
+                "centro": r.centro,
+                "total_transacciones": int(r.total_transacciones or 0),
+                "anomalias": int(r.anomalias or 0),
+                "monto_total": float(r.monto_total or 0.0)
+            }
+            for r in centros_res
+        ]
+
+        return {
+            "evolucion_mensual": evolucion_mensual,
+            "top_cuentas": top_cuentas,
+            "centros_costo": centros_costo
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener analítica contable: {str(e)}"
+        )

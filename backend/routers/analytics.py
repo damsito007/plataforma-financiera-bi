@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
-
+from typing import Optional
+from datetime import datetime
+from sqlalchemy import text
 from database import SessionLocal
 from models import TransaccionProcesada
 
@@ -1041,3 +1043,4 @@ def obtener_kpis_compatibilidad(
         carpeta_id=carpeta_id,
         db=db
     )
+

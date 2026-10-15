@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile, status
-
+import unicodedata
 # Importar con los nombres EXACTOS de tu models.py
 from models import HistorialArchivo, TransaccionProcesada
 
@@ -38,8 +38,8 @@ def normalizar_y_cargar_dataframe(file: UploadFile):
     df.columns = [str(c).strip().lower().replace(" ", "_").replace(".", "") for c in df.columns]
 
     mapeo = {
-        'debito': ['debito', 'debit', 'debitos', 'cargo', 'cargos'],
-        'credito': ['credito', 'credit', 'creditos', 'abono', 'abonos'],
+        'debito': ['debito','débito', 'debit', 'debitos', 'cargo', 'cargos'],
+        'credito': ['credito','crédito', 'credit', 'creditos', 'abono', 'abonos'],
         'monto': ['monto', 'amount', 'total', 'importe', 'valor'],
         'cuenta': ['cuenta', 'account', 'nombre_cuenta'],
         'codigo_cuenta': ['codigo_cuenta', 'num_cuenta', 'codigo'],
@@ -85,8 +85,8 @@ def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, car
 
         contaminacion_map = {
             'Telecomunicaciones': 0.05,
-            'Arrocera': 0.03,
-            'Cerveceria': 0.04
+            'Proyectos de Construcción': 0.04,
+            'Saneamiento de aguas residuales': 0.05
         }
         contamination = contaminacion_map.get(sector, 0.05)
 
