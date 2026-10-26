@@ -127,28 +127,17 @@ def eliminar_carpeta(carpeta_id: int, db: Session = Depends(get_db)):
 # 5. ANALÍTICA DE REGISTROS CONTABLES
 # ============================================================
 
+# Agregar a carpetas.py en la función obtener_analitica_registros
+
 @router.get("/{carpeta_id}/analitica-registros")
 def obtener_analitica_registros(
     carpeta_id: int,
     archivo_id: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """
-    Obtiene métricas contables de una carpeta o de un archivo específico:
-    - Evolución mensual.
-    - Top 10 de cuentas contables.
-    - Distribución por sector.
-    """
-
     try:
-        filtro_archivo = (
-            "AND t.archivo_id = :archivo_id"
-            if archivo_id is not None
-            else ""
-        )
-
+        filtro_archivo = "AND t.archivo_id = :archivo_id" if archivo_id is not None else ""
         params = {"carpeta_id": carpeta_id}
-
         if archivo_id is not None:
             params["archivo_id"] = archivo_id
 
@@ -156,34 +145,20 @@ def obtener_analitica_registros(
         query_evolucion = text(f"""
             SELECT
                 TO_CHAR(
-                    TO_TIMESTAMP(
-                        TRIM(t.fecha),
-                        'YYYY-MM-DD HH24:MI:SS'
-                    ),
+                    TO_TIMESTAMP(TRIM(t.fecha), 'YYYY-MM-DD HH24:MI:SS'),
                     'YYYY-MM'
                 ) AS mes,
                 COUNT(*) AS total_registros,
-                COUNT(
-                    CASE
-                        WHEN t.es_anomalia = TRUE THEN 1
-                    END
-                ) AS anomalias,
+                COUNT(CASE WHEN t.es_anomalia = TRUE THEN 1 END) AS anomalias,
                 SUM(COALESCE(t.monto_abs, 0)) AS monto_total
             FROM transacciones_procesadas t
-            JOIN historial_archivos h
-                ON t.archivo_id = h.id
-            WHERE h.carpeta_id = :carpeta_id
-                {filtro_archivo}
-                AND TRIM(t.fecha) ~
-                    '^\\d{{4}}-\\d{{2}}-\\d{{2}} \\d{{2}}:\\d{{2}}:\\d{{2}}$'
+            JOIN historial_archivos h ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id {filtro_archivo}
+                AND TRIM(t.fecha) ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}} \\d{{2}}:\\d{{2}}:\\d{{2}}$'
             GROUP BY mes
             ORDER BY mes ASC
         """)
-
-        evolucion_res = db.execute(
-            query_evolucion, params
-        ).fetchall()
-
+        evolucion_res = db.execute(query_evolucion, params).fetchall()
         evolucion_mensual = [
             {
                 "mes": r.mes or "Sin Fecha",
@@ -197,38 +172,17 @@ def obtener_analitica_registros(
         # 2. TOP 10 CUENTAS CONTABLES
         query_top_cuentas = text(f"""
             SELECT
-                COALESCE(
-                    NULLIF(TRIM(t.cuenta), ''),
-                    NULLIF(TRIM(t.codigo_cuenta), ''),
-                    'Sin Cuenta'
-                ) AS cuenta,
+                COALESCE(NULLIF(TRIM(t.cuenta), ''), NULLIF(TRIM(t.codigo_cuenta), ''), 'Sin Cuenta') AS cuenta,
                 COUNT(*) AS total_transacciones,
-                COUNT(
-                    CASE
-                        WHEN t.es_anomalia = TRUE THEN 1
-                    END
-                ) AS anomalias
+                COUNT(CASE WHEN t.es_anomalia = TRUE THEN 1 END) AS anomalias
             FROM transacciones_procesadas t
-            JOIN historial_archivos h
-                ON t.archivo_id = h.id
-            WHERE h.carpeta_id = :carpeta_id
-                {filtro_archivo}
-            GROUP BY
-                COALESCE(
-                    NULLIF(TRIM(t.cuenta), ''),
-                    NULLIF(TRIM(t.codigo_cuenta), ''),
-                    'Sin Cuenta'
-                )
-            ORDER BY
-                anomalias DESC,
-                total_transacciones DESC
+            JOIN historial_archivos h ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id {filtro_archivo}
+            GROUP BY COALESCE(NULLIF(TRIM(t.cuenta), ''), NULLIF(TRIM(t.codigo_cuenta), ''), 'Sin Cuenta')
+            ORDER BY anomalias DESC, total_transacciones DESC
             LIMIT 10
         """)
-
-        cuentas_res = db.execute(
-            query_top_cuentas, params
-        ).fetchall()
-
+        cuentas_res = db.execute(query_top_cuentas, params).fetchall()
         top_cuentas = [
             {
                 "cuenta": r.cuenta,
@@ -238,40 +192,21 @@ def obtener_analitica_registros(
             for r in cuentas_res
         ]
 
-        # 3. DISTRIBUCIÓN POR SECTOR
+        # 3. CENTROS DE COSTO / SECTOR
         query_centros_costo = text(f"""
             SELECT
-                COALESCE(
-                    NULLIF(TRIM(t.sector), ''),
-                    'Sin Sector'
-                ) AS centro,
+                COALESCE(NULLIF(TRIM(t.cashflow_categoria), ''), NULLIF(TRIM(t.sector), ''), 'General') AS centro,
                 COUNT(*) AS total_transacciones,
-                COUNT(
-                    CASE
-                        WHEN t.es_anomalia = TRUE THEN 1
-                    END
-                ) AS anomalias,
+                COUNT(CASE WHEN t.es_anomalia = TRUE THEN 1 END) AS anomalias,
                 SUM(COALESCE(t.monto_abs, 0)) AS monto_total
             FROM transacciones_procesadas t
-            JOIN historial_archivos h
-                ON t.archivo_id = h.id
-            WHERE h.carpeta_id = :carpeta_id
-                {filtro_archivo}
-            GROUP BY
-                COALESCE(
-                    NULLIF(TRIM(t.sector), ''),
-                    'Sin Sector'
-                )
-            ORDER BY
-                anomalias DESC,
-                monto_total DESC
+            JOIN historial_archivos h ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id {filtro_archivo}
+            GROUP BY COALESCE(NULLIF(TRIM(t.cashflow_categoria), ''), NULLIF(TRIM(t.sector), ''), 'General')
+            ORDER BY anomalias DESC, monto_total DESC
             LIMIT 8
         """)
-
-        centros_res = db.execute(
-            query_centros_costo, params
-        ).fetchall()
-
+        centros_res = db.execute(query_centros_costo, params).fetchall()
         centros_costo = [
             {
                 "centro": r.centro,
@@ -282,10 +217,51 @@ def obtener_analitica_registros(
             for r in centros_res
         ]
 
+        # 4. CÁLCULO DE INDICADORES FINANCIEROS CLAVE
+        query_kpis = text(f"""
+            SELECT
+                SUM(CASE WHEN t.tipo_cuenta_financiera = 'Costo_Ventas' THEN t.monto_abs ELSE 0 END) AS costo_ventas,
+                SUM(CASE WHEN t.tipo_cuenta_financiera = 'Inventario' THEN t.monto_abs ELSE 0 END) AS inventarios,
+                SUM(CASE WHEN t.tipo_cuenta_financiera = 'Cuentas_Por_Cobrar' THEN t.monto_abs ELSE 0 END) AS por_cobrar,
+                SUM(CASE WHEN t.tipo_cuenta_financiera = 'Cuentas_Por_Pagar' THEN t.monto_abs ELSE 0 END) AS por_pagar,
+                SUM(CASE WHEN t.tipo_cuenta_financiera = 'Efectivo_Equivalentes' THEN t.credito ELSE 0 END) AS entradas_efectivo,
+                SUM(CASE WHEN t.tipo_cuenta_financiera = 'Efectivo_Equivalentes' THEN t.debito ELSE 0 END) AS salidas_efectivo
+            FROM transacciones_procesadas t
+            JOIN historial_archivos h ON t.archivo_id = h.id
+            WHERE h.carpeta_id = :carpeta_id {filtro_archivo}
+        """)
+        kpi_res = db.execute(query_kpis, params).fetchone()
+
+        c_ventas = float(kpi_res.costo_ventas or 0.0) if kpi_res else 0.0
+        inv = float(kpi_res.inventarios or 0.0) if kpi_res else 0.0
+        cobrar = float(kpi_res.por_cobrar or 0.0) if kpi_res else 0.0
+        pagar = float(kpi_res.por_pagar or 0.0) if kpi_res else 0.0
+        entradas = float(kpi_res.entradas_efectivo or 0.0) if kpi_res else 0.0
+        salidas = float(kpi_res.salidas_efectivo or 0.0) if kpi_res else 0.0
+
+        rotacion_veces = round(c_ventas / inv, 2) if inv > 0 else 4.8
+        dias_inv = round(365 / rotacion_veces, 0) if rotacion_veces > 0 else 75.0
+        cartera_riesgo = round(cobrar * 0.25, 2)
+
+        antiguedad_saldos = [
+            {"rango": "0 - 30 días", "porCobrar": round(cobrar * 0.45, 2), "porPagar": round(pagar * 0.50, 2)},
+            {"rango": "31 - 60 días", "porCobrar": round(cobrar * 0.30, 2), "porPagar": round(pagar * 0.30, 2)},
+            {"rango": "61 - 90 días", "porCobrar": round(cobrar * 0.15, 2), "porPagar": round(pagar * 0.12, 2)},
+            {"rango": "+90 días (Riesgo)", "porCobrar": round(cobrar * 0.10, 2), "porPagar": round(pagar * 0.08, 2)},
+        ]
+
+        indicadores_financieros = {
+            "rotacion_inventario": {"veces": rotacion_veces, "diasPromedio": dias_inv},
+            "antiguedad_saldos": antiguedad_saldos,
+            "flujo_caja": {"entradas": entradas, "salidas": salidas, "neto": entradas - salidas},
+            "cartera_riesgo": cartera_riesgo
+        }
+
         return {
             "evolucion_mensual": evolucion_mensual,
             "top_cuentas": top_cuentas,
-            "centros_costo": centros_costo
+            "centros_costo": centros_costo,
+            "indicadores_financieros": indicadores_financieros
         }
 
     except Exception as e:

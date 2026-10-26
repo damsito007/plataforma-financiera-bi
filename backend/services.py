@@ -5,13 +5,30 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile, status
-import unicodedata
-# Importar con los nombres EXACTOS de tu models.py
 from models import HistorialArchivo, TransaccionProcesada
 
 
+def clasificar_tipo_cuenta(codigo_cuenta: str, nombre_cuenta: str) -> str:
+    """Clasifica el tipo de cuenta financiera según su código o nombre para los KPIs."""
+    cod = str(codigo_cuenta).strip()
+    nom = str(nombre_cuenta).strip().lower()
+
+    if cod.startswith('11') or 'caja' in nom or 'banco' in nom or 'cta cte' in nom:
+        return "Efectivo_Equivalentes"
+    elif cod.startswith('12') or cod.startswith('13') or 'cliente' in nom or 'cobrar' in nom:
+        return "Cuentas_Por_Cobrar"
+    elif cod.startswith('14') or cod.startswith('115') or 'inventario' in nom or 'bodega' in nom or 'mercanc' in nom:
+        return "Inventario"
+    elif cod.startswith('21') or cod.startswith('22') or 'proveedor' in nom or 'pagar' in nom:
+        return "Cuentas_Por_Pagar"
+    elif cod.startswith('5') or cod.startswith('6') or 'costo' in nom or 'gasto' in nom or 'honorarios' in nom:
+        return "Costo_Ventas"
+    
+    return "Otros"
+
+
 def normalizar_y_cargar_dataframe(file: UploadFile):
-    """Carga Excel o CSV desde UploadFile independientemente de delimitadores."""
+    """Carga Excel o CSV desde UploadFile e incluye mapeos para los nuevos KPIs."""
     contents = file.file.read()
     filename = file.filename
 
@@ -34,24 +51,27 @@ def normalizar_y_cargar_dataframe(file: UploadFile):
             detail="El archivo proporcionado está vacío."
         )
 
-    # Normalizar nombres de columnas a minúsculas
+    # Normalizar nombres de columnas
     df.columns = [str(c).strip().lower().replace(" ", "_").replace(".", "") for c in df.columns]
 
     mapeo = {
-        'debito': ['debito','débito', 'debit', 'debitos', 'cargo', 'cargos'],
-        'credito': ['credito','crédito', 'credit', 'creditos', 'abono', 'abonos'],
+        'debito': ['debito', 'débito', 'debit', 'debitos', 'cargo', 'cargos'],
+        'credito': ['credito', 'crédito', 'credit', 'creditos', 'abono', 'abonos'],
         'monto': ['monto', 'amount', 'total', 'importe', 'valor'],
         'cuenta': ['cuenta', 'account', 'nombre_cuenta'],
         'codigo_cuenta': ['codigo_cuenta', 'num_cuenta', 'codigo'],
         'descripcion': ['descripcion', 'description', 'detalle', 'observacion', 'glosa', 'concepto'],
         'fecha': ['fecha', 'date', 'fecha_transaccion', 'periodo'],
-        'proveedor_o_cliente': ['proveedor', 'cliente', 'tercero', 'vendor', 'customer']
+        'proveedor_o_cliente': ['proveedor', 'cliente', 'tercero', 'vendor', 'customer'],
+        'numero_documento': ['numero', 'referencia', 'num_doc', 'comprobante'],
+        'fecha_vencimiento': ['fecha_vencimiento', 'vencimiento', 'f_venc'],
+        'cashflow_categoria': ['cashflow', 'centro_costo', 'centro_de_costo']
     }
 
     df_normalizado = pd.DataFrame()
 
     for campo_estandar, sinonimos in mapeo.items():
-        col_encontrada = next((col for col in df.columns if any(s in col for s in sinonimos)), None)
+        col_encontrada = next((col for col in df.columns if any(s == col or s in col for s in sinonimos)), None)
         if col_encontrada:
             df_normalizado[campo_estandar] = df[col_encontrada]
         else:
@@ -76,7 +96,7 @@ def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, car
     try:
         df = normalizar_y_cargar_dataframe(file)
 
-        # 1. Detección de anomalías con Isolation Forest & Z-Score
+        # Detección de anomalías con Isolation Forest & Z-Score
         std_monto = float(df['monto_abs'].std())
         mean_monto = float(df['monto_abs'].mean())
         df['z_score_monto'] = (df['monto_abs'] - mean_monto) / (std_monto if std_monto > 0 else 1.0)
@@ -108,13 +128,12 @@ def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, car
 
         df['nivel_riesgo'] = df.apply(evaluar_riesgo, axis=1)
 
-        # Totales
         total_registros = int(len(df))
         total_anomalias = int(df['es_anomalia'].sum())
         total_debito = float(df['debito'].sum())
         total_credito = float(df['credito'].sum())
 
-        # 2. Inserción en la tabla HistorialArchivo
+        # Inserción en HistorialArchivo
         nuevo_archivo = HistorialArchivo(
             nombre_archivo=filename,
             carpeta_id=int(carpeta_id),
@@ -128,21 +147,29 @@ def procesar_archivo_empresarial(file: UploadFile, sector: str, db: Session, car
         db.commit()
         db.refresh(nuevo_archivo)
 
-        # 3. Inserción en la tabla TransaccionProcesada
+        # Inserción en TransaccionProcesada (con las nuevas columnas)
         registros_db = []
         for _, row in df.iterrows():
+            cod_cta = str(row.get('codigo_cuenta', ''))
+            nom_cta = str(row.get('cuenta', 'N/A'))
+            tipo_cta = clasificar_tipo_cuenta(cod_cta, nom_cta)
+
             reg = TransaccionProcesada(
                 archivo_id=int(nuevo_archivo.id),
                 carpeta_id=int(carpeta_id),
                 sector=str(sector),
                 fecha=str(row.get('fecha', '')),
-                codigo_cuenta=str(row.get('codigo_cuenta', '')),
-                cuenta=str(row.get('cuenta', 'N/A')),
+                fecha_vencimiento=str(row.get('fecha_vencimiento', row.get('fecha', ''))),
+                numero_documento=str(row.get('numero_documento', '')),
+                codigo_cuenta=cod_cta,
+                cuenta=nom_cta,
+                tipo_cuenta_financiera=tipo_cta,
                 proveedor_o_cliente=str(row.get('proveedor_o_cliente', 'N/A')),
                 descripcion=str(row.get('descripcion', 'Sin detalle')),
                 debito=float(row['debito']),
                 credito=float(row['credito']),
                 monto_abs=float(row['monto_abs']),
+                cashflow_categoria=str(row.get('cashflow_categoria', 'Sin Categoría')),
                 es_anomalia=bool(row['es_anomalia']),
                 puntuacion_anomalia=float(row['puntuacion_anomalia']),
                 nivel_riesgo=str(row['nivel_riesgo']),

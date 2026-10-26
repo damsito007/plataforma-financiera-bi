@@ -11,17 +11,23 @@ import {
 import {
   Upload, FileSpreadsheet, CheckCircle2, AlertCircle, LogOut, RefreshCw,
   BarChart2, ShieldCheck, Database, Cpu, Activity, DollarSign, Layers, Check,
-  FolderPlus, Folder, Trash2, ChevronLeft, ChevronRight, Search, Sun, Moon, Lock, User, Clock, Eye, FileText, TrendingUp, Briefcase, PieChart as PieIcon, HelpCircle, Download, FileCheck2
+  FolderPlus, Folder, Trash2, ChevronLeft, ChevronRight, Search, Sun, Moon, Lock, User, Clock, Eye, FileText, TrendingUp, Briefcase, PieChart as PieIcon, HelpCircle, Download, FileCheck2, Package
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 
 export default function AdminDashboard({ usuarioSesion, onLogout }) {
   // Tema Claro / Oscuro
   const [modoClaro, setModoClaro] = useState(false);
 
-  // Referencia para la captura del informe PDF
-  const reportRef = useRef(null);
+  // Referencias para captura de gráficos HTML/SVG para el PDF
+  const chartAntiguedadRef = useRef(null);
+  const chartEvolucionRef = useRef(null);
+  const chartBalanceRef = useRef(null);
+  const chartDonutRef = useRef(null);
+  const chartTopCuentasRef = useRef(null);
+  const chartCentrosCostoRef = useRef(null);
 
   // Estados para Generación de Reporte PDF
   const [mostrarModalConfirmarReporte, setMostrarModalConfirmarReporte] = useState(false);
@@ -34,7 +40,7 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
   const [nuevaCarpetaSector, setNuevaCarpetaSector] = useState('Telecomunicaciones');
   const [mostrarModalNuevaCarpeta, setMostrarModalNuevaCarpeta] = useState(false);
 
-  // Modal Eliminar Carpeta con Contraseña
+  // Modal Eliminar Carpeta
   const [mostrarModalEliminarCarpeta, setMostrarModalEliminarCarpeta] = useState(false);
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [errorPassword, setErrorPassword] = useState('');
@@ -47,26 +53,31 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
   const [procesando, setProcesando] = useState(false);
   const [faseCarga, setFaseCarga] = useState(false);
 
-  // Buscador y Paginación de Archivos (Límite 10)
+  // Buscador y Paginación
   const [busquedaArchivo, setBusquedaArchivo] = useState('');
   const [paginaArchivos, setPaginaArchivos] = useState(1);
   const LIMITE_ARCHIVOS = 10;
 
-  // Selección de Archivo para Análisis Específico
+  // Selección de Archivo para Análisis
   const [archivoSeleccionadoAnálisis, setArchivoSeleccionadoAnálisis] = useState(null);
 
-  // Datos devueltos desde Supabase
+  // Datos devueltos desde API
   const [historialArchivos, setHistorialArchivos] = useState([]);
   const [resumenData, setResumenData] = useState(null);
 
-  // Datos analíticos de registros contables
   const [dataAnaliticaRegistros, setDataAnaliticaRegistros] = useState({
     evolucion_mensual: [],
     top_cuentas: [],
-    centros_costo: []
+    centros_costo: [],
+    indicadores_financieros: {
+      rotacion_inventario: { veces: 0, diasPromedio: 0 },
+      antiguedad_saldos: [],
+      flujo_caja: { entradas: 0, salidas: 0, neto: 0 },
+      cartera_riesgo: 0
+    }
   });
 
-  // Formateadores de Moneda (Dólares y Córdobas)
+  // Formateadores
   const formatMoney = (val) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val || 0);
 
@@ -80,16 +91,11 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
     if (!fechaIso) return 'Fecha no disp.';
     const date = new Date(fechaIso);
     return date.toLocaleString('es-NI', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', hour12: true
     });
   };
 
-  // Paginación interna del dashboard derecho
   const [paginaDashboard, setPaginaDashboard] = useState(1);
 
   useEffect(() => {
@@ -153,32 +159,205 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
     }
   };
 
- // Función para generar Reporte Ejecutivo NATIVO con jsPDF y jsPDF-AutoTable
+ 
+const obtenerImagenNodo = async (ref) => {
+  if (!ref?.current) return null;
+
+  let objectUrl = null;
+
+  try {
+    const node = ref.current;
+
+    // Buscar específicamente el SVG de Recharts.
+    const svgOriginal =
+      node.querySelector(".recharts-surface") ||
+      node.querySelector(".recharts-wrapper svg") ||
+      (node.tagName?.toLowerCase() === "svg" ? node : null);
+
+    if (!svgOriginal) {
+      console.warn("No se encontró el SVG del gráfico:", node);
+      return null;
+    }
+
+    // Usar las dimensiones del gráfico, no las de toda la tarjeta.
+    const rect = svgOriginal.getBoundingClientRect();
+    const width =
+      rect.width ||
+      Number(svgOriginal.getAttribute("width")) ||
+      600;
+    const height =
+      rect.height ||
+      Number(svgOriginal.getAttribute("height")) ||
+      250;
+
+    if (!width || !height) {
+      console.warn("El gráfico no tiene dimensiones válidas.");
+      return null;
+    }
+
+    // Crear un SVG independiente.
+    const clonedSvg = svgOriginal.cloneNode(true);
+
+    clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clonedSvg.setAttribute("width", String(width));
+    clonedSvg.setAttribute("height", String(height));
+
+    if (!clonedSvg.getAttribute("viewBox")) {
+      clonedSvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    }
+
+    // Copiar estilos calculados para que no dependan del CSS externo.
+    const originalElements = [
+      svgOriginal,
+      ...svgOriginal.querySelectorAll("*"),
+    ];
+    const clonedElements = [
+      clonedSvg,
+      ...clonedSvg.querySelectorAll("*"),
+    ];
+
+    originalElements.forEach((original, index) => {
+      const cloned = clonedElements[index];
+      if (!cloned) return;
+
+      const computed = window.getComputedStyle(original);
+
+      [
+        "fill",
+        "fill-opacity",
+        "stroke",
+        "stroke-width",
+        "stroke-opacity",
+        "stroke-dasharray",
+        "opacity",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "text-anchor",
+        "dominant-baseline",
+        "color",
+      ].forEach((property) => {
+        const value = computed.getPropertyValue(property);
+        if (value) cloned.style.setProperty(property, value);
+      });
+    });
+
+    // Asegurar que las definiciones SVG, como los linearGradient,
+    // sigan dentro del mismo SVG que las referencias url(#...).
+    const defsOriginal = svgOriginal.querySelector("defs");
+    if (defsOriginal && !clonedSvg.querySelector("defs")) {
+      clonedSvg.insertBefore(
+        defsOriginal.cloneNode(true),
+        clonedSvg.firstChild
+      );
+    }
+
+    // Serializar el SVG.
+    const svgString = new XMLSerializer().serializeToString(clonedSvg);
+    const svgBlob = new Blob([svgString], {
+      type: "image/svg+xml;charset=utf-8",
+    });
+
+    objectUrl = URL.createObjectURL(svgBlob);
+
+    // Cargar el SVG como imagen.
+    const image = new Image();
+
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () =>
+        reject(new Error("No se pudo convertir el SVG en imagen."));
+      image.src = objectUrl;
+    });
+
+    // Exportar a PNG con resolución 2x.
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("No se pudo crear el contexto del canvas.");
+    }
+
+    ctx.scale(scale, scale);
+
+    // Fondo opaco para el PDF.
+    ctx.fillStyle = modoClaro ? "#ffffff" : "#1E293B";
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.drawImage(image, 0, 0, width, height);
+
+    return canvas.toDataURL("image/png");
+  } catch (error) {
+    console.error("Error al capturar el gráfico para el PDF:", error);
+    return null;
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+};
+
+
+// Función auxiliar para controlar saltos de página de gráficos
+
+const agregarGraficoSeguro = (
+  pdf,
+  imgData,
+  yActual,
+  margin,
+  pageWidth,
+  pageHeight,
+  altoGrafico = 50
+) => {
+  let y = yActual;
+
+  if (!imgData || !imgData.startsWith("data:image/png")) {
+    console.warn("Se omitió un gráfico porque no se generó un PNG válido.");
+    return y;
+  }
+
+  const anchoGrafico = pageWidth - margin * 2;
+
+  if (y + altoGrafico > pageHeight - 15) {
+    pdf.addPage();
+    y = 18;
+  }
+
+  pdf.addImage(
+    imgData,
+    "PNG",
+    margin,
+    y,
+    anchoGrafico,
+    altoGrafico
+  );
+
+  return y + altoGrafico + 6;
+};
+
+  // Función principal de Generación del Reporte PDF con Tablas + Gráficos
   const generarReportePDF = async () => {
     setMostrarModalConfirmarReporte(false);
     setGenerandoPDF(true);
 
     try {
-      // 1. Crear documento PDF A4 en milímetros
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth(); // ~210 mm
-      const pageHeight = pdf.internal.pageSize.getHeight(); // ~297 mm
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 14;
 
-      // Paleta Corporativa
-      const colorVino = [139, 13, 55];     // #8B0D37
-      const colorGrisOscuro = [30, 41, 59]; // #1E293B
+      const colorVino = [139, 13, 55];
+      const colorGrisOscuro = [30, 41, 59];
       const colorGrisTexto = [100, 116, 139];
       const colorRojoAlerta = [239, 68, 68];
       const colorVerdeSalud = [16, 185, 129];
 
-      // Determinar alcance del reporte (Archivo individual o Proyecto completo)
       const esArchivoIndividual = !!archivoSeleccionadoAnálisis;
       const tituloAlcance = esArchivoIndividual
         ? `Archivo: ${archivoSeleccionadoAnálisis.nombre_archivo}`
         : `Proyecto Completo: ${carpetaSeleccionada?.nombre || 'General'}`;
 
-      // Datos dinámicos a utilizar
       const totalRegs = esArchivoIndividual
         ? archivoSeleccionadoAnálisis.total_registros
         : resumenData?.total_registros || 0;
@@ -203,26 +382,27 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
         ? ((totalAnomalias / totalRegs) * 100).toFixed(1)
         : '0.0';
 
-      // ==========================================
+      // Captura secuencial de las imágenes de gráficos
+      //const imgAntiguedad = await obtenerImagenNodo(chartAntiguedadRef);
+      //const imgEvolucion = await obtenerImagenNodo(chartBalanceRef);
+      const imgTopCuentas = await obtenerImagenNodo(chartTopCuentasRef);
+
       // ENCABEZADO INSTITUCIONAL
-      // ==========================================
       pdf.setFillColor(...colorVino);
-      pdf.rect(0, 0, pageWidth, 8, 'F'); // Franja superior decorativa
+      pdf.rect(0, 0, pageWidth, 8, 'F');
 
       let y = 18;
 
-      // Título Principal
       pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(16);
+      pdf.setFontSize(15);
       pdf.setTextColor(...colorVino);
       pdf.text('PLATAFORMA FINANCIERA BI', margin, y);
 
-      pdf.setFontSize(10);
+      pdf.setFontSize(9);
       pdf.setFont('helvetica', 'normal');
       pdf.setTextColor(...colorGrisTexto);
-      pdf.text('Informe Ejecutivo de Auditoría & Detección de Anomalías', margin, y + 5);
+      pdf.text('Informe Ejecutivo de Auditoría, Indicadores Financieros & Anomalías', margin, y + 5);
 
-      // Fecha y Datos de emisión a la derecha
       pdf.setFontSize(8);
       pdf.text(`Emisión: ${new Date().toLocaleDateString('es-NI')}`, pageWidth - margin, y, { align: 'right' });
       pdf.text(`Usuario: ${usuarioSesion?.username || 'Admin'}`, pageWidth - margin, y + 4, { align: 'right' });
@@ -232,20 +412,18 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
       pdf.line(margin, y, pageWidth - margin, y);
       y += 6;
 
-      // ==========================================
-      // 1. ALCANCE Y CONTEXTO DEL PROYECTO
-      // ==========================================
-      pdf.setFontSize(11);
+      // 1. ALCANCE
+      pdf.setFontSize(10.5);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(...colorGrisOscuro);
       pdf.text('1. Alcance y Contexto del Análisis', margin, y);
-      y += 5;
+      y += 4;
 
       autoTable(pdf, {
         startY: y,
         theme: 'plain',
         margin: { left: margin, right: margin },
-        styles: { fontSize: 8.5, textColor: [51, 65, 85], cellPadding: 2 },
+        styles: { fontSize: 8, textColor: [51, 65, 85], cellPadding: 1.5 },
         body: [
           [
             { content: 'Proyecto / Carpeta:', fontStyle: 'bold' }, carpetaSeleccionada?.nombre || 'N/A',
@@ -258,35 +436,27 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
         ]
       });
 
-      y = pdf.lastAutoTable.finalY + 8;
+      y = pdf.lastAutoTable.finalY + 6;
 
-      // ==========================================
-      // 2. INDICADORES CLAVE Y RESUMEN GENERAL (KPIs)
-      // ==========================================
-      pdf.setFontSize(11);
+      // 2. RESUMEN GENERAL Y KPIS
+      pdf.setFontSize(10.5);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(...colorGrisOscuro);
       pdf.text('2. Resumen General e Indicadores Clave (KPIs)', margin, y);
-      y += 5;
+      y += 4;
 
       autoTable(pdf, {
         startY: y,
         theme: 'grid',
         margin: { left: margin, right: margin },
-        headStyles: {
-          fillColor: colorVino,
-          textColor: [255, 255, 255],
-          fontStyle: 'bold',
-          halign: 'center',
-          fontSize: 8.5
-        },
-        bodyStyles: { fontSize: 8.5, halign: 'center', cellPadding: 3 },
+        headStyles: { fillColor: colorVino, textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', fontSize: 8 },
+        bodyStyles: { fontSize: 8, halign: 'center', cellPadding: 2.5 },
         head: [['Total Registros', 'Anomalías / Alertas', 'Salud del Libro', 'Tasa de Riesgo', 'Total Débito (C$)', 'Total Crédito ($)']],
         body: [
           [
             formatNumber(totalRegs),
             { content: formatNumber(totalAnomalias), fontStyle: 'bold', textColor: totalAnomalias > 0 ? colorRojoAlerta : colorGrisOscuro },
-            { content: `${saludPorcentaje}%`, fontStyle: 'bold', textColor: colorVerdeSalud },
+            { content: `${saludLibro}%`, fontStyle: 'bold', textColor: colorVerdeSalud },
             `${tasaRiesgo}%`,
             formatCordobas(totalDebito),
             formatMoney(totalCredito)
@@ -294,31 +464,98 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
         ]
       });
 
-      y = pdf.lastAutoTable.finalY + 8;
+      y = pdf.lastAutoTable.finalY + 6;
 
-      // ==========================================
-      // 3. TOP 10 CUENTAS AFECTADAS Y CENTROS DE COSTO
-      // ==========================================
-      pdf.setFontSize(11);
+      // 3. INDICADORES FINANCIEROS Y ANTIGÜEDAD DE SALDOS
+      const kpisFinancieros = dataAnaliticaRegistros.indicadores_financieros || {};
+      const rot = kpisFinancieros.rotacion_inventario || { veces: 0, diasPromedio: 0 };
+      const flujo = kpisFinancieros.flujo_caja || { entradas: 0, salidas: 0, neto: 0 };
+      const antiguedad = kpisFinancieros.antiguedad_saldos || [];
+
+      pdf.setFontSize(10.5);
       pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(...colorGrisOscuro);
-      pdf.text('3. Desglose de Anomalías por Cuentas y Centros de Costo', margin, y);
-      y += 5;
+      pdf.text('3. Indicadores Financieros y Antigüedad de Saldos', margin, y);
+      y += 4;
 
-      // Generar datos para las tablas en bruto
-      const filasCuentas = (dataAnaliticaRegistros.top_cuentas || []).slice(0, 10).map((item, idx) => [
+      autoTable(pdf, {
+        startY: y,
+        theme: 'grid',
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: colorGrisOscuro, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8, cellPadding: 2 },
+        head: [['Rango / Indicador', 'Por Cobrar (Clientes)', 'Por Pagar (Proveedores)', 'Diagnóstico Operativo']],
+        body: [
+          ['Rotación Inventarios', `${rot.veces} veces/año`, `${rot.diasPromedio} días promedio`, 'Liquidez de Almacén'],
+          ['Flujo de Caja Neto', `Entradas: ${formatMoney(flujo.entradas)}`, `Salidas: ${formatMoney(flujo.salidas)}`, `Neto: ${formatMoney(flujo.neto)}`],
+          ...(antiguedad.map(a => [
+            a.rango,
+            formatMoney(a.porCobrar),
+            formatMoney(a.porPagar),
+            a.rango.includes('+90') ? 'Riesgo Moroso Elevado' : 'Operatividad Normal'
+          ]))
+        ]
+      });
+
+      y = pdf.lastAutoTable.finalY + 4;
+
+    //  if (imgAntiguedad) {
+      //  if (y + 50 > pageHeight - 15) { pdf.addPage(); y = 15; }
+       // pdf.addImage(imgAntiguedad, 'PNG', margin, y, pageWidth - (margin * 2), 48);
+      //  y += 52;
+    //  }
+
+      // 4. EVOLUCIÓN MENSUAL
+      if (y + 55 > pageHeight - 15) { pdf.addPage(); y = 15; }
+
+      pdf.setFontSize(10.5);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(...colorGrisOscuro);
+      pdf.text('4. Evolución Mensual de Registros y Anomalías', margin, y);
+      y += 4;
+
+      // 🟢 DECLARACIÓN DE filasEvolucion
+      const filasEvolucion = (dataAnaliticaRegistros.evolucion_mensual || []).map(m => [
+        m.mes || 'N/A',
+        formatNumber(m.total_registros),
+        formatNumber(m.anomalias),
+        m.total_registros > 0 ? `${((m.anomalias / m.total_registros) * 100).toFixed(1)}%` : '0%'
+      ]);
+
+      autoTable(pdf, {
+        startY: y,
+        theme: 'striped',
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: colorVino, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8, cellPadding: 2, halign: 'center' },
+        head: [['Mes', 'Total Registros', 'Anomalías IA', 'Tasa de Riesgo']],
+        body: filasEvolucion.length > 0 ? filasEvolucion : [['-', 'Sin registros', '0', '0%']]
+      });
+
+      y = pdf.lastAutoTable.finalY + 4;
+
+     // if (imgEvolucion) {
+     //   if (y + 50 > pageHeight - 15) { pdf.addPage(); y = 15; }
+      //  pdf.addImage(imgEvolucion, 'PNG', margin, y, pageWidth - (margin * 2), 48);
+      //  y += 52;
+     // }
+
+      // 5. TOP CUENTAS CONTABLES
+      if (y + 55 > pageHeight - 15) { pdf.addPage(); y = 15; }
+
+      pdf.setFontSize(10.5);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(...colorGrisOscuro);
+      pdf.text('5. Top Cuentas Contables Afectadas', margin, y);
+      y += 4;
+
+      // 🟢 DECLARACIÓN DE filasCuentas
+      const filasCuentas = (dataAnaliticaRegistros.top_cuentas || []).slice(0, 8).map((item, idx) => [
         `#${idx + 1}`,
         item.cuenta || 'Sin especificación',
         formatNumber(item.anomalias)
       ]);
 
-      const filasCentros = (dataAnaliticaRegistros.centros_costo || []).slice(0, 10).map((item, idx) => [
-        `#${idx + 1}`,
-        item.centro || 'General / Operativo',
-        formatNumber(item.anomalias)
-      ]);
-
-      // Renderizar Tabla Cuentas Top
       autoTable(pdf, {
         startY: y,
         theme: 'striped',
@@ -327,59 +564,18 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
         bodyStyles: { fontSize: 8, cellPadding: 2 },
         columnStyles: { 0: { cellWidth: 12 }, 2: { halign: 'right', fontStyle: 'bold' } },
         head: [['No.', 'Cuenta Contable Afectada', 'Anomalías Detectadas']],
-        body: filasCuentas.length > 0 ? filasCuentas : [['-', 'No se registraron anomalías en cuentas', '0']]
+        body: filasCuentas.length > 0 ? filasCuentas : [['-', 'Sin anomalías registradas', '0']]
       });
 
-      y = pdf.lastAutoTable.finalY + 6;
+      y = pdf.lastAutoTable.finalY + 4;
 
-      // Renderizar Tabla Centros de Costo
-      autoTable(pdf, {
-        startY: y,
-        theme: 'striped',
-        margin: { left: margin, right: margin },
-        headStyles: { fillColor: colorGrisTexto, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-        bodyStyles: { fontSize: 8, cellPadding: 2 },
-        columnStyles: { 0: { cellWidth: 12 }, 2: { halign: 'right', fontStyle: 'bold' } },
-        head: [['No.', 'Centro de Costo / Departamento', 'Alertas IA']],
-        body: filasCentros.length > 0 ? filasCentros : [['-', 'No hay datos de centros de costo', '0']]
-      });
-
-      y = pdf.lastAutoTable.finalY + 8;
-
-      // ==========================================
-      // 4. EVOLUCIÓN MENSUAL DE REGISTROS
-      // ==========================================
-      if (y + 40 > pageHeight) {
-        pdf.addPage();
-        y = 20;
+      if (imgTopCuentas) {
+        if (y + 50 > pageHeight - 15) { pdf.addPage(); y = 15; }
+        pdf.addImage(imgTopCuentas, 'PNG', margin, y, pageWidth - (margin * 2), 48);
+        y += 52;
       }
 
-      pdf.setFontSize(11);
-      pdf.setFont('helvetica', 'bold');
-      pdf.setTextColor(...colorGrisOscuro);
-      pdf.text('4. Histórico Mensual de Ingesta y Riesgo', margin, y);
-      y += 5;
-
-      const filasMensual = (dataAnaliticaRegistros.evolucion_mensual || []).map((m) => [
-        m.mes || 'Mes N/A',
-        formatNumber(m.total_registros),
-        formatNumber(m.anomalias),
-        m.total_registros > 0 ? `${((m.anomalias / m.total_registros) * 100).toFixed(1)}%` : '0%'
-      ]);
-
-      autoTable(pdf, {
-        startY: y,
-        theme: 'grid',
-        margin: { left: margin, right: margin },
-        headStyles: { fillColor: colorVino, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8, halign: 'center' },
-        bodyStyles: { fontSize: 8, halign: 'center', cellPadding: 2 },
-        head: [['Período / Mes', 'Total Transacciones', 'Anomalías Detectadas', 'Índice de Alerta']],
-        body: filasMensual.length > 0 ? filasMensual : [['Sin histórico', '0', '0', '0%']]
-      });
-
-      // ==========================================
-      // PIE DE PÁGINA INSTITUCIONAL
-      // ==========================================
+      // PIE DE PÁGINA RECURRENTE
       const totalPaginas = pdf.internal.getNumberOfPages();
       for (let i = 1; i <= totalPaginas; i++) {
         pdf.setPage(i);
@@ -393,12 +589,11 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
         );
       }
 
-      // Descargar PDF
       const nombrePDF = `Reporte_Ejecutivo_${carpetaSeleccionada?.nombre || 'Auditoria'}.pdf`;
       pdf.save(nombrePDF);
 
     } catch (err) {
-      console.error("Error al generar el PDF nativo:", err);
+      console.error("Error al generar el PDF completo:", err);
       alert(`Ocurrió un error al compilar el informe: ${err.message}`);
     } finally {
       setGenerandoPDF(false);
@@ -560,7 +755,6 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
     );
   }, [historialArchivos, busquedaArchivo]);
 
-  const totalPaginasArchivos = Math.ceil(archivosFiltrados.length / LIMITE_ARCHIVOS) || 1;
   const archivosPaginados = useMemo(() => {
     const inicio = (paginaArchivos - 1) * LIMITE_ARCHIVOS;
     return archivosFiltrados.slice(inicio, inicio + LIMITE_ARCHIVOS);
@@ -602,6 +796,12 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
     ? ((resumenData.total_anomalias / resumenData.total_registros) * 100).toFixed(1)
     : 0;
 
+  // Extracción de datos de Indicadores Financieros
+  const kpisFinancieros = dataAnaliticaRegistros.indicadores_financieros || {};
+  const rotacionObj = kpisFinancieros.rotacion_inventario || { veces: 4.8, diasPromedio: 75 };
+  const antiguedadSaldosData = kpisFinancieros.antiguedad_saldos || [];
+  const flujoCajaData = kpisFinancieros.flujo_caja || { entradas: 0, salidas: 0, neto: 0 };
+
   const customTooltipStyle = {
     backgroundColor: '#ffffff',
     border: '1px solid #cbd5e1',
@@ -626,7 +826,7 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
     <div className={`min-h-screen ${bgMain} p-4 md:p-8 font-sans relative transition-colors duration-300`}>
 
       {/* NAVBAR */}
-      <nav className={`max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-[#5C0924]/80 backdrop-blur-md p-4 px-6 rounded-2xl border border-slate-800/80 shadow-2xl relative z-10 text-white`}>
+      <nav className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 bg-[#5C0924]/80 backdrop-blur-md p-4 px-6 rounded-2xl border border-slate-800/80 shadow-2xl relative z-10 text-white">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-gradient-to-tr from-[#8B0D37] to-[#5C0924] rounded-xl shadow-lg shadow-[#8B0D37]/30">
             <Cpu size={22} className="text-white" />
@@ -892,12 +1092,12 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
           )}
         </div>
 
-        {/* COLUMNA DERECHA: DASHBOARD / ANALÍTICA Y REPORTE */}
+        {/* COLUMNA DERECHA: DASHBOARD Y ANALÍTICA */}
         <div className="lg:col-span-8">
           {resumenData ? (
             <div className="space-y-4">
 
-              {/* ENCABEZADO Y BARRA DE ACCIÓN PARA GENERAR REPORTE */}
+              {/* ENCABEZADO Y ACCIÓN PDF */}
               <div className={`${cardBg} p-3 px-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md`}>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <BarChart2 size={16} className="text-[#8B0D37]" />
@@ -925,17 +1125,17 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
                     className="px-3 py-1.5 bg-[#8B0D37] hover:bg-[#5C0924] text-white rounded-xl text-[11px] font-bold transition-all shadow-md flex items-center gap-1.5"
                   >
                     <Download size={13} />
-                    <span>Generar Reporte PDF</span>
+                    <span>Generar Reporte PDF Completo</span>
                   </button>
                 </div>
               </div>
 
-              {/* CONTENEDOR CAPTURABLE PARA EL REPORTE PDF */}
-              <div ref={reportRef} className="min-h-[580px] p-2 space-y-6">
+              {/* DASHBOARD PRINCIPAL */}
+              <div className="min-h-[580px] p-2 space-y-6">
                 {paginaDashboard === 1 && (
                   <div className="space-y-6">
 
-                    {/* KPI CARDS */}
+                    {/* BLOQUE 1: KPIS PRINCIPALES */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className={`${cardBg} p-4 rounded-2xl relative`}>
                         <span className="text-xs text-slate-400 font-medium">Registros Ingestados</span>
@@ -959,8 +1159,75 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
                       </div>
                     </div>
 
-                    {/* SECCIÓN 1: EVOLUCIÓN MENSUAL */}
-                    <div className={`${cardBg} p-5 rounded-2xl relative`}>
+                    {/* KPIS FINANCIEROS */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className={`${cardBg} p-4 rounded-2xl relative border-l-4 border-l-[#8B0D37]`}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Rotación Inventario</span>
+                          <Package size={16} className="text-[#8B0D37]" />
+                        </div>
+                        <h4 className="text-xl font-black mt-1">{rotacionObj.veces} veces/año</h4>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Permanencia: <strong className="text-amber-400">{rotacionObj.diasPromedio} días</strong></p>
+                      </div>
+
+                      <div className={`${cardBg} p-4 rounded-2xl relative border-l-4 border-l-emerald-500`}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Flujo de Caja Neto</span>
+                          <DollarSign size={16} className="text-emerald-500" />
+                        </div>
+                        <h4 className="text-xl font-black text-emerald-400 mt-1">{formatMoney(flujoCajaData.neto)}</h4>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Balance Entradas / Salidas</p>
+                      </div>
+
+                      <div className={`${cardBg} p-4 rounded-2xl relative border-l-4 border-l-red-500`}>
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Cartera Riesgo (+60d)</span>
+                          <Clock size={16} className="text-red-400" />
+                        </div>
+                        <h4 className="text-xl font-black text-red-400 mt-1">
+                          {formatMoney(
+                            kpisFinancieros.cartera_riesgo ||
+                            (antiguedadSaldosData.reduce((acc, item) => {
+                              return item.rango.includes('61') || item.rango.includes('+90')
+                                ? acc + (item.porCobrar || 0)
+                                : acc;
+                            }, 0))
+                          )}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Cobro Vencido Requerido</p>
+                      </div>
+                    </div>
+
+                    {/* BLOQUE GRÁFICO 1: ANTIGÜEDAD DE SALDOS (SIN ANIMACIÓN PARA CAPTURA PDF) */}
+                    <div ref={chartAntiguedadRef} data-chart="true" className={`${cardBg} p-5 rounded-2xl relative`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-bold flex items-center gap-1.5">
+                          <Clock size={18} className="text-[#8B0D37]" />
+                          <span>Antigüedad de Saldos (Cobros vs Pagos por Rangos)</span>
+                          <span title="Agrupa las cuentas por cobrar a clientes y por pagar a proveedores por tramos de antigüedad en días.">
+                            <HelpCircle size={14} className="text-slate-400 hover:text-[#8B0D37] cursor-pointer ml-1" />
+                          </span>
+                        </h4>
+                        <BurbujaComentarios graficoId="admin_antiguedad_saldos" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                      </div>
+
+                      <div className="h-56">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={antiguedadSaldosData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                            <XAxis dataKey="rango" stroke="#64748b" fontSize={11} />
+                            <YAxis stroke="#64748b" fontSize={10} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                            <Tooltip contentStyle={customTooltipStyle} labelStyle={customLabelStyle} formatter={(val) => [formatMoney(val)]} />
+                            <Legend />
+                            <Bar dataKey="porCobrar" name="Por Cobrar (Clientes)" fill="#10b981" radius={[4, 4, 0, 0]} barSize={28} isAnimationActive={false} />
+                            <Bar dataKey="porPagar" name="Por Pagar (Proveedores)" fill="#8B0D37" radius={[4, 4, 0, 0]} barSize={28} isAnimationActive={false} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* BLOQUE GRÁFICO 2: EVOLUCIÓN MENSUAL */}
+                    <div ref={chartEvolucionRef} data-chart="true" className={`${cardBg} p-5 rounded-2xl relative`}>
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="text-sm font-bold flex items-center gap-1.5">
                           <TrendingUp size={18} className="text-blue-400" />
@@ -990,25 +1257,21 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
                             <YAxis stroke="#64748b" fontSize={10} />
                             <Tooltip contentStyle={customTooltipStyle} labelStyle={customLabelStyle} />
                             <Legend />
-                            <Area type="monotone" dataKey="total_registros" name="Total Registros" stroke="#3b82f6" fillOpacity={1} fill="url(#colorReg)" />
-                            <Area type="monotone" dataKey="anomalias" name="Anomalías / Alertas" stroke="#ef4444" fillOpacity={1} fill="url(#colorAno)" />
+                            <Area type="monotone" dataKey="total_registros" name="Total Registros" stroke="#3b82f6" fillOpacity={1} fill="url(#colorReg)" isAnimationActive={false} />
+                            <Area type="monotone" dataKey="anomalias" name="Anomalías / Alertas" stroke="#ef4444" fillOpacity={1} fill="url(#colorAno)" isAnimationActive={false} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
 
-                    {/* SECCIÓN 2: CONSOLIDADO CONTABLE + ANÁLISIS DE ANOMALÍAS */}
+                    {/* BLOQUE GRÁFICO 3 Y 4: BALANCE GENERAL Y TASA DE ANOMALÍAS */}
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
 
-                      {/* CONSOLIDADO CONTABLE */}
-                      <div className={`md:col-span-7 ${cardBg} p-5 rounded-2xl relative`}>
+                      <div ref={chartBalanceRef} data-chart="true" className={`md:col-span-7 ${cardBg} p-5 rounded-2xl relative`}>
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="text-sm font-bold flex items-center gap-1.5">
                             <DollarSign size={18} className="text-emerald-500" />
                             <span>Balance General (Débito C$ vs Crédito $)</span>
-                            <span title="Compara el monto total de Débitos (en Córdobas C$) frente a los Créditos (en Dólares $USD) cargados en el proyecto.">
-                              <HelpCircle size={14} className="text-slate-400 hover:text-emerald-400 cursor-pointer ml-1" />
-                            </span>
                           </h4>
                           <BurbujaComentarios graficoId="admin_consolidado_contable" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
                         </div>
@@ -1028,22 +1291,18 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
                                 ]}
                               />
                               <Legend />
-                              <Bar dataKey="Débito" name="Débito (C$)" stackId="a" fill="#8B0D37" radius={[0, 0, 4, 4]} barSize={45} />
-                              <Bar dataKey="Crédito" name="Crédito ($)" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} barSize={45} />
+                              <Bar dataKey="Débito" name="Débito (C$)" stackId="a" fill="#8B0D37" radius={[0, 0, 4, 4]} barSize={45} isAnimationActive={false} />
+                              <Bar dataKey="Crédito" name="Crédito ($)" stackId="a" fill="#10b981" radius={[6, 6, 0, 0]} barSize={45} isAnimationActive={false} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
 
-                      {/* DONUT CON KPI CENTRAL */}
-                      <div className={`md:col-span-5 ${cardBg} p-5 rounded-2xl relative flex flex-col justify-between`}>
+                      <div ref={chartDonutRef} className={`md:col-span-5 ${cardBg} p-5 rounded-2xl relative flex flex-col justify-between`}>
                         <div className="flex items-center justify-between mb-1">
                           <h4 className="text-sm font-bold flex items-center gap-1.5">
                             <PieIcon size={18} className="text-red-400" />
                             <span>Tasa de Anomalías</span>
-                            <span title="Muestra la proporción porcentual entre transacciones contables normales y registros marcados con bandera de alerta por la IA.">
-                              <HelpCircle size={14} className="text-slate-400 hover:text-red-400 cursor-pointer ml-1" />
-                            </span>
                           </h4>
                           <BurbujaComentarios graficoId="admin_analisis_anomalias" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
                         </div>
@@ -1059,6 +1318,7 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
                                 outerRadius={68}
                                 paddingAngle={4}
                                 dataKey="value"
+                                isAnimationActive={false}
                               >
                                 {chartPieAnomalias.map((entry, index) => (
                                   <Cell key={`cell-${index}`} fill={entry.color} />
@@ -1077,44 +1337,36 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
 
                     </div>
 
-                    {/* SECCIÓN 3: TOP 10 CUENTAS Y CENTROS DE COSTO */}
+                    {/* BLOQUE GRÁFICO 5 Y 6: TOP 10 CUENTAS Y CENTROS DE COSTO */}
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
 
-                      {/* TOP 10 CUENTAS */}
-                      <div className={`md:col-span-7 ${cardBg} p-5 rounded-2xl relative`}>
+                      <div ref={chartTopCuentasRef} data-chart="true" className={`md:col-span-7 ${cardBg} p-5 rounded-2xl relative`}>
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="text-sm font-bold flex items-center gap-1.5">
                             <Layers size={18} className="text-[#8B0D37]" />
                             <span>Top 10 Cuentas Contables Afectadas</span>
-                            <span title="Ranking de las 10 cuentas del catálogo contable que concentran la mayor cantidad de registros con anomalías.">
-                              <HelpCircle size={14} className="text-slate-400 hover:text-[#8B0D37] cursor-pointer ml-1" />
-                            </span>
                           </h4>
                           <BurbujaComentarios graficoId="admin_top_cuentas" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
                         </div>
 
                         <div className="h-56">
-                          <ResponsiveContainer width="100%" height="100%">
+                          <ResponsiveContainer width="100%" height="100%" layout="vertical">
                             <BarChart data={dataAnaliticaRegistros.top_cuentas} layout="vertical">
                               <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
                               <XAxis type="number" stroke="#64748b" fontSize={10} />
                               <YAxis dataKey="cuenta" type="category" stroke="#94a3b8" fontSize={10} width={130} tickFormatter={(v) => v.length > 18 ? `${v.substring(0, 18)}...` : v} />
                               <Tooltip contentStyle={customTooltipStyle} labelStyle={customLabelStyle} />
-                              <Bar dataKey="anomalias" name="Anomalías" fill="#8B0D37" radius={[0, 4, 4, 0]} barSize={14} />
+                              <Bar dataKey="anomalias" name="Anomalías" fill="#8B0D37" radius={[0, 4, 4, 0]} barSize={14} isAnimationActive={false} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                       </div>
 
-                      {/* CENTROS DE COSTO */}
-                      <div className={`md:col-span-5 ${cardBg} p-5 rounded-2xl relative`}>
+                      <div ref={chartCentrosCostoRef} className={`md:col-span-5 ${cardBg} p-5 rounded-2xl relative`}>
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="text-sm font-bold flex items-center gap-1.5">
                             <Briefcase size={18} className="text-emerald-400" />
-                            <span>Centros de Costo</span>
-                            <span title="Distribución del número de anomalías contables detectadas agrupadas por centro de costo o departamento operativo.">
-                              <HelpCircle size={14} className="text-slate-400 hover:text-emerald-400 cursor-pointer ml-1" />
-                            </span>
+                            <span>Centros de Costo / Cashflow</span>
                           </h4>
                           <BurbujaComentarios graficoId="admin_centros_costo" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
                         </div>
@@ -1126,7 +1378,7 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
                               <XAxis dataKey="centro" stroke="#64748b" fontSize={9} tickFormatter={(v) => v.length > 10 ? `${v.substring(0, 10)}...` : v} />
                               <YAxis stroke="#64748b" fontSize={10} />
                               <Tooltip contentStyle={customTooltipStyle} labelStyle={customLabelStyle} />
-                              <Bar dataKey="anomalias" name="Anomalías" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="anomalias" name="Anomalías" fill="#ef4444" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
@@ -1185,12 +1437,12 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
               </div>
               <div>
                 <h3 className="text-base font-bold">Generar Reporte Ejecutivo PDF</h3>
-                <p className="text-xs text-slate-400">Exportación oficial de auditoría</p>
+                <p className="text-xs text-slate-400">Exportación oficial de auditoría con gráficos integrados</p>
               </div>
             </div>
 
             <p className="text-xs mb-4 leading-relaxed text-slate-300">
-              Se compilará un documento formal en formato PDF con la síntesis ejecutiva, KPIs, gráficos de evolución, consolidado contable y tasa de anomalías del proyecto <strong className="text-white">{carpetaSeleccionada?.nombre}</strong>.
+              Se compilará un documento formal en PDF con tablas de balance y captura de gráficos estáticos de alta resolución del proyecto <strong className="text-white">{carpetaSeleccionada?.nombre}</strong>.
             </p>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -1214,13 +1466,13 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
         </div>
       )}
 
-      {/* MODAL ANIMACIÓN DE CARGA AL COMPILAR PDF */}
+      {/* MODAL ANIMACIÓN DE CARGA PDF */}
       {generandoPDF && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#1E293B] border border-slate-700 p-8 rounded-2xl shadow-2xl flex flex-col items-center text-center max-w-xs w-full text-white">
             <RefreshCw className="animate-spin text-[#8B0D37] mb-4" size={48} />
             <h4 className="text-base font-extrabold mb-1">Compilando Reporte PDF</h4>
-            <p className="text-xs text-slate-400">Procesando gráficos estáticos y tablas de balance...</p>
+            <p className="text-xs text-slate-400">Capturando tablas y vectorizando gráficos del panel...</p>
           </div>
         </div>
       )}
@@ -1307,7 +1559,7 @@ export default function AdminDashboard({ usuarioSesion, onLogout }) {
             <form onSubmit={confirmarEliminarCarpeta} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold mb-1 flex items-center gap-1">
-                  <Lock size={12} /> Confirma tu contraseña
+                  <Lock size={12} /> Confirms tu contraseña
                 </label>
                 <input
                   type="password"

@@ -73,24 +73,31 @@ class TransaccionProcesada(Base):
     sector = Column(String, default="General")
     
     # Datos Normalizados
-    fecha = Column(String, nullable=True) 
+    fecha = Column(String, nullable=True)
+    fecha_vencimiento = Column(String, nullable=True)        # <--- NUEVO (Antigüedad de Saldos)
+    numero_documento = Column(String, nullable=True)         # <--- NUEVO (Referencia/Factura)
     codigo_cuenta = Column(String, nullable=True)
     cuenta = Column(String, nullable=True)
+    tipo_cuenta_financiera = Column(String, nullable=True)  # <--- NUEVO ("Inventario", "Costo_Ventas", etc.)
+    
     proveedor_o_cliente = Column(String, nullable=True) 
     descripcion = Column(String, nullable=True)
     debito = Column(Float, default=0.0)
     credito = Column(Float, default=0.0)
     monto_abs = Column(Float, default=0.0)
     
-    # Outputs de Machine Learning y Ciencia de Datos
+    # Categorización de Flujo de Caja
+    cashflow_categoria = Column(String, nullable=True)      # <--- NUEVO (Columna CASHFLOW / Centro Costo del Excel)
+    
+    # Outputs ML y BI
     categoria_predicha = Column(String, nullable=True)
     es_anomalia = Column(Boolean, default=False) 
-    puntuacion_anomalia = Column(Float, default=0.0)  # Score de Isolation Forest
-    nivel_riesgo = Column(String, default="Bajo")  # "Bajo", "Medio", "Alto", "Crítico"
+    puntuacion_anomalia = Column(Float, default=0.0)
+    nivel_riesgo = Column(String, default="Bajo")
     z_score_monto = Column(Float, default=0.0)
-    tipo_movimiento = Column(String, nullable=True)  # "Débito" o "Crédito"
+    tipo_movimiento = Column(String, nullable=True)
     es_sospecha_duplicado = Column(Boolean, default=False)
-    segmento_monto = Column(String, nullable=True)  # "Micro", "Mediano", "Alto Valor"
+    segmento_monto = Column(String, nullable=True)
 
 
 # ==========================================
