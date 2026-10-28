@@ -822,6 +822,37 @@ const agregarGraficoSeguro = (
   const subCardBg = modoClaro ? 'bg-slate-50 border-slate-200' : 'bg-[#1E293B] border-slate-800';
   const inputBg = modoClaro ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#1E293B] border-slate-800 text-white';
 
+  const calcularPlazoProyecto = () => {
+  // 1. Obtener la primera fecha del proyecto
+  const primeraFechaStr = dataAnaliticaRegistros.evolucion_mensual?.[0]?.mes;
+  
+  if (!primeraFechaStr) return null;
+
+  // Convertir 'YYYY-MM' a un objeto Date (primer día del mes)
+  const fechaInicio = new Date(`${primeraFechaStr}-01T00:00:00`);
+  const fechaActual = new Date();
+
+  // 2. Duración planificada: 2.5 años = 30 meses = ~912.5 días
+  const DIAS_PLANIFICADOS = Math.round(2.5 * 365.25); // 913 días
+
+  // 3. Diferencia de días transcurridos
+  const diferenciaMilisegundos = fechaActual - fechaInicio;
+  const diasTranscurridos = Math.floor(diferenciaMilisegundos / (1000 * 60 * 60 * 24));
+
+  // 4. Calcular días sobrepasados
+  const diasAtraso = diasTranscurridos - DIAS_PLANIFICADOS;
+
+  return {
+    fechaInicio: fechaInicio.toLocaleDateString('es-NI', { month: 'short', year: 'numeric' }),
+    diasTranscurridos,
+    diasPlanificados: DIAS_PLANIFICADOS,
+    diasAtraso: diasAtraso > 0 ? diasAtraso : 0,
+    estaAtrasado: diasAtraso > 0
+  };
+};
+
+const plazoInfo = calcularPlazoProyecto();
+
   return (
     <div className={`min-h-screen ${bgMain} p-4 md:p-8 font-sans relative transition-colors duration-300`}>
 
@@ -1135,30 +1166,77 @@ const agregarGraficoSeguro = (
                 {paginaDashboard === 1 && (
                   <div className="space-y-6">
 
-                    {/* BLOQUE 1: KPIS PRINCIPALES */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div className={`${cardBg} p-4 rounded-2xl relative`}>
-                        <span className="text-xs text-slate-400 font-medium">Registros Ingestados</span>
-                        <h4 className="text-2xl font-black text-[#1591EA] mt-2">
-                          {formatNumber(archivoSeleccionadoAnálisis ? archivoSeleccionadoAnálisis.total_registros : resumenData.total_registros)}
-                        </h4>
-                      </div>
+                    {/* BLOQUE 1: KPIS PRINCIPALES EN UNA SOLA HILERA DE 4 COLUMNAS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* KPI 1: Registros Ingestados */}
+        <div className={`${cardBg} p-4 rounded-2xl relative flex flex-col justify-between`}>
+          <div>
+            <span className="text-xs text-slate-400 font-medium">Registros Ingestados</span>
+            <h4 className="text-2xl font-black text-[#1591EA] mt-2">
+              {formatNumber(archivoSeleccionadoAnálisis ? archivoSeleccionadoAnálisis.total_registros : resumenData.total_registros)}
+            </h4>
+          </div>
+        </div>
 
-                      <div className={`${cardBg} p-4 rounded-2xl relative`}>
-                        <span className="text-xs text-slate-400 font-medium">Anomalías Detectadas</span>
-                        <h4 className="text-2xl font-black text-red-500 mt-2">
-                          {formatNumber(archivoSeleccionadoAnálisis ? archivoSeleccionadoAnálisis.total_anomalias : resumenData.total_anomalias)}
-                        </h4>
-                      </div>
+        {/* KPI 2: Anomalías Detectadas */}
+        <div className={`${cardBg} p-4 rounded-2xl relative flex flex-col justify-between`}>
+          <div>
+            <span className="text-xs text-slate-400 font-medium">Anomalías Detectadas</span>
+            <h4 className="text-2xl font-black text-red-500 mt-2">
+              {formatNumber(archivoSeleccionadoAnálisis ? archivoSeleccionadoAnálisis.total_anomalias : resumenData.total_anomalias)}
+            </h4>
+          </div>
+        </div>
 
-                      <div className={`${cardBg} p-4 rounded-2xl relative`}>
-                        <span className="text-xs text-slate-400 font-medium">Salud del Libro</span>
-                        <h4 className="text-2xl font-black text-emerald-500 mt-2">
-                          {saludPorcentaje}%
-                        </h4>
-                      </div>
-                    </div>
+        {/* KPI 3: Salud del Libro */}
+        <div className={`${cardBg} p-4 rounded-2xl relative flex flex-col justify-between`}>
+          <div>
+            <span className="text-xs text-slate-400 font-medium">Salud del Libro</span>
+            <h4 className="text-2xl font-black text-emerald-500 mt-2">
+              {saludPorcentaje}%
+            </h4>
+          </div>
+        </div>
 
+        {/* KPI 4: Plazo de Ejecución (Días Activos) */}
+        {plazoInfo && (
+          <div className={`${cardBg} p-4 rounded-2xl relative border-l-4 ${plazoInfo.estaAtrasado ? 'border-l-red-500' : 'border-l-emerald-500'} flex flex-col justify-between`}>
+            <div>
+              <div className="flex justify-between items-start mb-1">
+                <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                  Plazo de Ejecución (2.5 Años)
+                </span>
+                <Clock className={plazoInfo.estaAtrasado ? 'text-red-500' : 'text-emerald-500'} size={18} />
+              </div>
+
+              {/* Días transcurridos */}
+              <div className="flex items-baseline gap-2 mt-1">
+                <h4 className="text-xl font-black">
+                  {formatNumber(plazoInfo.diasTranscurridos)} <span className="text-xs font-normal text-slate-400">días activos</span>
+                </h4>
+              </div>
+
+              {/* Estado de sobrepaso / atraso */}
+              {plazoInfo.estaAtrasado ? (
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-red-500 font-bold bg-red-500/10 p-1.5 px-2.5 rounded-lg border border-red-500/20">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>Excedido por {formatNumber(plazoInfo.diasAtraso)} días</span>
+                </div>
+              ) : (
+                <p className="text-[10px] text-emerald-400 font-semibold mt-2">
+                  En tiempo (Límite: {plazoInfo.diasPlanificados} días)
+                </p>
+              )}
+            </div>
+
+            <p className="text-[9px] text-slate-400 mt-2">
+              Inicio registrado: <strong>{plazoInfo.fechaInicio}</strong>
+            </p>
+          </div>
+        )}
+
+      </div>
                     {/* KPIS FINANCIEROS */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className={`${cardBg} p-4 rounded-2xl relative border-l-4 border-l-[#8B0D37]`}>
