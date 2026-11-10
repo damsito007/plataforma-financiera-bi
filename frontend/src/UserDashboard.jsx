@@ -412,7 +412,7 @@ export default function UserDashboard({ usuarioSesion, onLogout }) {
 
                     {/* BLOQUE 1: KPIS PRINCIPALES EN UNA SOLA HILERA DE 4 COLUMNAS */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      
+
                       {/* KPI 1: Registros Ingestados */}
                       <div className={`${cardBg} p-4 rounded-2xl relative flex flex-col justify-between`}>
                         <div>
@@ -565,12 +565,12 @@ export default function UserDashboard({ usuarioSesion, onLogout }) {
                           <AreaChart data={dataAnaliticaRegistros.evolucion_mensual}>
                             <defs>
                               <linearGradient id="colorReg" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                               </linearGradient>
                               <linearGradient id="colorAno" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6}/>
-                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6} />
+                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                               </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
@@ -751,3 +751,7 @@ export default function UserDashboard({ usuarioSesion, onLogout }) {
     </div>
   );
 }
+
+
+
+
