@@ -1468,7 +1468,9 @@ const plazoInfo = calcularPlazoProyecto();
                 )}
 
                 {paginaDashboard === 2 && carpetaSeleccionada?.id && (
-                  <AnaliticaAvanzada carpetaId={carpetaSeleccionada.id} />
+                  <AnaliticaAvanzada carpetaId={carpetaSeleccionada.id} 
+                  modoClaro={modoClaro}
+                  />
                 )}
               </div>
 
