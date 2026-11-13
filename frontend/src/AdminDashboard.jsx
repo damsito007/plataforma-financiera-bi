@@ -1286,7 +1286,7 @@ const plazoInfo = calcularPlazoProyecto();
                             <HelpCircle size={14} className="text-slate-400 hover:text-[#8B0D37] cursor-pointer ml-1" />
                           </span>
                         </h4>
-                        <BurbujaComentarios graficoId="admin_antiguedad_saldos" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                        <BurbujaComentarios graficoId="admin_antiguedad_saldos" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} modoClaro={modoClaro}/>
                       </div>
 
                       <div className="h-56">
@@ -1314,7 +1314,7 @@ const plazoInfo = calcularPlazoProyecto();
                             <HelpCircle size={14} className="text-slate-400 hover:text-blue-400 cursor-pointer ml-1" />
                           </span>
                         </h4>
-                        <BurbujaComentarios graficoId="admin_evolucion_mensual" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                        <BurbujaComentarios graficoId="admin_evolucion_mensual" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} modoClaro={modoClaro}/>
                       </div>
 
                       <div className="h-52">
@@ -1351,7 +1351,7 @@ const plazoInfo = calcularPlazoProyecto();
                             <DollarSign size={18} className="text-emerald-500" />
                             <span>Balance General (Débito C$ vs Crédito $)</span>
                           </h4>
-                          <BurbujaComentarios graficoId="admin_consolidado_contable" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                          <BurbujaComentarios graficoId="admin_consolidado_contable" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} modoClaro={modoClaro}/>
                         </div>
 
                         <div className="h-48">
@@ -1382,7 +1382,7 @@ const plazoInfo = calcularPlazoProyecto();
                             <PieIcon size={18} className="text-red-400" />
                             <span>Tasa de Anomalías</span>
                           </h4>
-                          <BurbujaComentarios graficoId="admin_analisis_anomalias" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                          <BurbujaComentarios graficoId="admin_analisis_anomalias" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} modoClaro={modoClaro}/>
                         </div>
 
                         <div className="h-44 relative my-auto">
@@ -1424,7 +1424,7 @@ const plazoInfo = calcularPlazoProyecto();
                             <Layers size={18} className="text-[#8B0D37]" />
                             <span>Top 10 Cuentas Contables Afectadas</span>
                           </h4>
-                          <BurbujaComentarios graficoId="admin_top_cuentas" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                          <BurbujaComentarios graficoId="admin_top_cuentas" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} modoClaro={modoClaro}/>
                         </div>
 
                         <div className="h-56">
@@ -1446,7 +1446,7 @@ const plazoInfo = calcularPlazoProyecto();
                             <Briefcase size={18} className="text-emerald-400" />
                             <span>Centros de Costo / Cashflow</span>
                           </h4>
-                          <BurbujaComentarios graficoId="admin_centros_costo" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} />
+                          <BurbujaComentarios graficoId="admin_centros_costo" carpetaId={carpetaSeleccionada?.id} usuarioActual={usuarioSesion} modoClaro={modoClaro} />
                         </div>
 
                         <div className="h-56">
